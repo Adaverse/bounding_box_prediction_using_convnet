@@ -34,7 +34,7 @@ for i in true_listing:
         list_.append(np.array(Image.open(path + '/' + i)))
         j+=1
         print(j)
-        if j>51:
+        if j>300:
             break
     except KeyError:
         continue
@@ -42,17 +42,17 @@ for i in true_listing:
 
 for i in range(len(list_)):
     list_[i] = list_[i].reshape(1,list_[i].shape[0],list_[i].shape[1],list_[i].shape[2])
-y_values_ = y_values[0:52]    
+y_values_ = y_values[0:301]    
 for i in range(len(list_)):
     y_values_[i] = y_values_[i].reshape(1,y_values_[i].shape[0],) 
 
 ds_X = np.concatenate((list_[:]),axis = 0)
 ds_Y = np.concatenate((y_values_[:]),axis=0)
-X_train, X_test, Y_train, Y_test = train_test_split(ds_X, ds_Y, test_size=0.25, random_state=42)
-idx = 15
-plt.imshow(X_train[idx])
-plt.plot(Y_train[idx][0],Y_train[idx][2],Y_train[idx][0],Y_train[idx][3],marker = 'o')
-plt.plot(Y_train[idx][1],Y_train[idx][3],Y_train[idx][1],Y_train[idx][2],marker = 'o')
+X_train, X_test, Y_train, Y_test = train_test_split(ds_X, ds_Y, test_size=0.1, random_state=42)
+#idx = 15
+#plt.imshow(X_train[idx])
+#plt.plot(Y_train[idx][0],Y_train[idx][2],Y_train[idx][0],Y_train[idx][3],marker = 'o')
+#plt.plot(Y_train[idx][1],Y_train[idx][3],Y_train[idx][1],Y_train[idx][2],marker = 'o')
 
 
 X_train = X_train/255
@@ -64,7 +64,7 @@ Y_test = np.squeeze(Y_test)
 X_train = X_train.astype('float32')
 X_test = X_test.astype('float32')
 Y_train = Y_train.astype('float32')
-Y_test = Y_test.astype('float32')
+Y_test = Y_test.astype('int32')
 def create_placeholders(n_H0, n_W0, n_C0, n_y):
     """
     Creates the placeholders for the tensorflow session.
@@ -168,9 +168,10 @@ def forward_propagation(X, parameters):
     
     P = tf.contrib.layers.flatten(P2)
     
-    # 6 neurons in output layer. Hint: one of the arguments should be "activation_fn=None" 
-    Z3 = tf.contrib.layers.fully_connected(P, 120)
-    Z4 = tf.contrib.layers.fully_connected(P, 4, activation_fn=None)
+   
+    Z3 = tf.contrib.layers.fully_connected(P, 120,biases_initializer=None)
+    reg = tf.contrib.layers.dropout(Z3,keep_prob=0.8)
+    Z4 = tf.contrib.layers.fully_connected(P, 4, activation_fn=None,biases_initializer=None)
 
 
     return Z4
@@ -234,8 +235,8 @@ def random_mini_batches(X, Y, mini_batch_size = 4, seed = 0):
     return mini_batches
 
 
-def model(X_train, Y_train, X_test, Y_test, learning_rate = 0.009,
-          num_epochs = 10, minibatch_size = 4, print_cost = True):
+def model(X_train, Y_train, X_test, Y_test, learning_rate = 0.0001,
+          num_epochs = 30, minibatch_size = 1, print_cost = True):
     """
     Implements a three-layer ConvNet in Tensorflow:
     CONV2D -> RELU -> MAXPOOL -> CONV2D -> RELU -> MAXPOOL -> FLATTEN -> FULLYCONNECTED
@@ -289,7 +290,8 @@ def model(X_train, Y_train, X_test, Y_test, learning_rate = 0.009,
         
         # Run the initialization
         sess.run(init)
-        
+        Y_test_tensor = tf.convert_to_tensor(Y_test, 'int32')
+        writer = tf.summary.FileWriter("/home/vicky/Desktop/log/", sess.graph)
         # Do the training loop
         for epoch in range(num_epochs):
 
@@ -314,26 +316,31 @@ def model(X_train, Y_train, X_test, Y_test, learning_rate = 0.009,
                 
 
             # Print the cost every epoch
-            if print_cost == True and epoch % 5 == 0:
+            if print_cost == True and epoch % 1 == 0:
                 print ("Cost after epoch %i: %f" % (epoch, minibatch_cost))
             if print_cost == True and epoch % 1 == 0:
                 costs.append(minibatch_cost)
         
         
         # plot the cost
-        #plt.plot(np.squeeze(costs))
-        #plt.ylabel('cost')
-        #plt.xlabel('iterations (per tens)')
-        #plt.title("Learning rate =" + str(learning_rate))
-        #plt.show()
-
+        plt.plot(np.squeeze(costs))
+        plt.ylabel('cost')
+        plt.xlabel('iterations (per tens)')
+        plt.title("Learning rate =" + str(learning_rate))
+        plt.show()
+        writer.close()
         # Calculate the correct predictions
         #predict_op = tf.argmax(Z4, 1)
         #correct_prediction = tf.equal(predict_op, tf.argmax(Y, 1))
         
         # Calculate accuracy on the test set
-        #accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
-        #print(accuracy)
+
+
+        iou,conf_mat = tf.metrics.mean_iou(tf.cast(Z3,'int32'), Y_test_tensor, Y_test.shape[0])
+        sess.run(tf.local_variables_initializer())
+        sess.run([conf_mat],feed_dict={X:X_test,Y:minibatch_Y})
+        miou = sess.run([iou])
+        print(miou)
         #train_accuracy = accuracy.eval({X: X_train, Y: Y_train})
         #test_accuracy = accuracy.eval({X: X_test, Y: Y_test})
         #print("Train Accuracy:", train_accuracy)
@@ -345,10 +352,10 @@ def model(X_train, Y_train, X_test, Y_test, learning_rate = 0.009,
         #for i in range(Y_test.shape[0]):
         #    iou_.append(iou(Y_test[i],output[i]))
         #avg = np.mean(iou_)
-        #return parameters, avg
+        parameters = sess.run(parameters)
+        return parameters
 
 parameters= model(X_train, Y_train, X_test, Y_test)
- with tf.Session() as session:
-      ckpt = tf.train.get_checkpoint_state('/home/vicky/Desktop/model/')
-      saver.restore(session, ckpt.model_checkpoint_path)
-      feed_dict = {tf_train_dataset : batch_data}
+
+
+
